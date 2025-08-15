@@ -609,3 +609,109 @@
     (ok trade-id)
   )
 )
+
+;; Executes secure artifact trades with atomic swaps
+(define-public (execute-trade (trade-id uint))
+  (let ((total-trades-count (var-get total-trades)))
+    (asserts! (<= trade-id total-trades-count) ERR-TRADE-NOT-FOUND)
+    (asserts! (> trade-id u0) ERR-INVALID-INPUT)
+
+    (let (
+        (trade (unwrap! (map-get? active-trades { trade-id: trade-id })
+          ERR-TRADE-NOT-FOUND
+        ))
+        (asset-id (get asset-id trade))
+      )
+      (asserts! (is-eq (get status trade) "active") ERR-INVALID-TRADE-STATUS)
+      (asserts! (<= stacks-block-height (get expiry trade)) ERR-TRADE-EXPIRED)
+      (asserts! (>= (stx-get-balance tx-sender) (get price trade))
+        ERR-INSUFFICIENT-BALANCE
+      )
+
+      ;; Execute atomic swap
+      (try! (stx-transfer? (get price trade) tx-sender (get seller trade)))
+      (try! (nft-transfer? bitrealm-asset asset-id (get seller trade) tx-sender))
+
+      ;; Update trade status
+      (map-set active-trades { trade-id: trade-id }
+        (merge trade {
+          status: "completed",
+          buyer: (some tx-sender),
+        })
+      )
+
+      (unwrap!
+        (emit-asset-event EVENT-TRADE-COMPLETED asset-id (get seller trade)
+          (some tx-sender)
+        )
+        ERR-NOT-AUTHORIZED
+      )
+
+      (ok true)
+    )
+  )
+)
+
+;; PRIVATE HELPER FUNCTIONS
+
+;; Validates reward eligibility
+(define-private (is-valid-reward-candidate (player principal))
+  (match (map-get? leaderboard { player: player })
+    stats (and
+      (> (get score stats) u0)
+      (is-valid-principal player)
+    )
+    false
+  )
+)
+
+;; Distributes individual rewards to commanders
+(define-private (distribute-reward
+    (player principal)
+    (previous-result (response bool uint))
+  )
+  (match (map-get? leaderboard { player: player })
+    player-stats (let ((reward-amount (calculate-reward (get score player-stats))))
+      (if (and (is-ok previous-result) (> reward-amount u0))
+        (begin
+          (map-set leaderboard { player: player }
+            (merge player-stats { total-rewards: (+ (get total-rewards player-stats) reward-amount) })
+          )
+          (ok true)
+        )
+        previous-result
+      )
+    )
+    previous-result
+  )
+)
+
+;; Calculates reward amounts based on performance
+(define-private (calculate-reward (score uint))
+  (if (and (> score u100) (<= score u10000))
+    (* score u10)
+    u0
+  )
+)
+
+;; Calculates experience requirements for level advancement
+(define-private (calculate-level-up-experience (current-level uint))
+  (* BASE-EXPERIENCE-REQUIRED current-level)
+)
+
+;; Validates experience point gains within limits
+(define-private (validate-experience-gain
+    (current-experience uint)
+    (gained-experience uint)
+    (current-level uint)
+  )
+  (let (
+      (max-allowed-gain (calculate-level-up-experience current-level))
+      (new-total-experience (+ current-experience gained-experience))
+    )
+    (and
+      (<= gained-experience max-allowed-gain)
+      (<= new-total-experience (* MAX-EXPERIENCE-PER-LEVEL current-level))
+    )
+  )
+)
