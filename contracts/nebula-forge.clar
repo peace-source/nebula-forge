@@ -203,3 +203,106 @@
     achievements: (list 20 (string-ascii 50)),
   }
 )
+
+;; Player Ranking Cache
+(define-map player-rankings
+  { rank: uint }
+  {
+    player: principal,
+    score: uint,
+  }
+)
+
+;; Interstellar Trading Hub
+(define-map active-trades
+  { trade-id: uint }
+  {
+    seller: principal,
+    asset-id: uint,
+    price: uint,
+    expiry: uint,
+    status: (string-ascii 20),
+    buyer: (optional principal),
+  }
+)
+
+;; Security Rate Limiting System
+(define-map rate-limits
+  {
+    function: (string-ascii 50),
+    caller: principal,
+  }
+  {
+    last-call: uint,
+    calls: uint,
+  }
+)
+
+;; READ-ONLY UTILITY FUNCTIONS
+
+;; Checks if caller has administrative privileges
+(define-read-only (is-protocol-admin (sender principal))
+  (default-to false (map-get? protocol-admin-whitelist sender))
+)
+
+;; Validates principal addresses for security
+(define-read-only (is-valid-principal (input principal))
+  (and
+    (not (is-eq input tx-sender))
+    (not (is-eq input (as-contract tx-sender)))
+  )
+)
+
+;; Enhanced principal validation with registry check
+(define-read-only (is-safe-principal (input principal))
+  (and
+    (is-valid-principal input)
+    (or
+      (is-protocol-admin input)
+      (is-some (map-get? leaderboard { player: input }))
+    )
+  )
+)
+
+;; Retrieves star system configuration
+(define-read-only (get-world-details (world-id uint))
+  (map-get? game-worlds { world-id: world-id })
+)
+
+;; Fetches command center details
+(define-read-only (get-avatar-details (avatar-id uint))
+  (map-get? avatar-metadata { avatar-id: avatar-id })
+)
+
+;; Returns top-performing players (simplified implementation)
+(define-read-only (get-top-players)
+  (let ((max-entries (var-get max-leaderboard-entries)))
+    (list
+      tx-sender
+    )
+  )
+)
+
+;; Calculates experience required for next level advancement
+(define-read-only (get-next-level-requirement (avatar-id uint))
+  (match (get-avatar-details avatar-id)
+    metadata (ok (calculate-level-up-experience (get level metadata)))
+    ERR-INVALID-AVATAR
+  )
+)
+
+;; Validates if command center can receive experience points
+(define-read-only (can-receive-experience
+    (avatar-id uint)
+    (experience-amount uint)
+  )
+  (match (get-avatar-details avatar-id)
+    metadata (ok (and
+      (< (get level metadata) MAX-LEVEL)
+      (validate-experience-gain (get experience metadata) experience-amount
+        (get level metadata)
+      )
+    ))
+    ERR-INVALID-AVATAR
+  )
+)
