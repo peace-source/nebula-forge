@@ -514,3 +514,98 @@
     (ok world-id)
   )
 )
+
+;; GALACTIC LEADERBOARD SYSTEM
+
+;; Updates commander performance metrics
+(define-public (update-player-score
+    (player principal)
+    (new-score uint)
+  )
+  (let ((current-stats (unwrap! (map-get? leaderboard { player: player }) ERR-PLAYER-NOT-FOUND)))
+    (asserts! (is-protocol-admin tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (is-valid-principal player) ERR-INVALID-INPUT)
+    (asserts! (and (>= new-score u0) (<= new-score u10000)) ERR-INVALID-SCORE)
+
+    (map-set leaderboard { player: player }
+      (merge current-stats {
+        score: new-score,
+        games-played: (+ (get games-played current-stats) u1),
+      })
+    )
+
+    (ok true)
+  )
+)
+
+;; REWARD DISTRIBUTION SYSTEM
+
+;; Distributes cosmic rewards to top-performing commanders
+(define-public (distribute-bitcoin-rewards)
+  (let ((top-players (get-top-players)))
+    (asserts! (is-protocol-admin tx-sender) ERR-NOT-AUTHORIZED)
+
+    (try! (fold distribute-reward (filter is-valid-reward-candidate top-players)
+      (ok true)
+    ))
+
+    (ok true)
+  )
+)
+
+;; EVENT TRACKING SYSTEM
+
+;; Emits blockchain events for artifact activities
+(define-public (emit-asset-event
+    (event-type (string-ascii 20))
+    (asset-id uint)
+    (sender principal)
+    (recipient (optional principal))
+  )
+  (begin
+    (print {
+      event: event-type,
+      asset-id: asset-id,
+      sender: sender,
+      recipient: recipient,
+      timestamp: stacks-block-height,
+    })
+    (ok true)
+  )
+)
+
+;; INTERSTELLAR TRADING SYSTEM
+
+;; Initiates peer-to-peer artifact trading
+(define-public (create-trade
+    (asset-id uint)
+    (price uint)
+    (expiry uint)
+  )
+  (let (
+      (trade-id (+ (var-get total-trades) u1))
+      (owner (unwrap! (nft-get-owner? bitrealm-asset asset-id) ERR-INVALID-GAME-ASSET))
+    )
+    (asserts! (> price u0) ERR-INVALID-INPUT)
+    (asserts! (< price u1000000000) ERR-INVALID-INPUT)
+    (asserts! (is-eq tx-sender owner) ERR-NOT-AUTHORIZED)
+    (asserts! (> expiry stacks-block-height) ERR-INVALID-INPUT)
+
+    (map-set active-trades { trade-id: trade-id } {
+      seller: tx-sender,
+      asset-id: asset-id,
+      price: price,
+      expiry: expiry,
+      status: "active",
+      buyer: none,
+    })
+
+    (var-set total-trades trade-id)
+
+    (unwrap! (emit-asset-event EVENT-TRADE-INITIATED asset-id tx-sender none)
+      ERR-NOT-AUTHORIZED
+    )
+
+    (ok trade-id)
+  )
+)
