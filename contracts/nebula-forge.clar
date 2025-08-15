@@ -103,3 +103,103 @@
     (not (is-eq description ""))
   )
 )
+
+;; Validates artifact rarity tiers
+(define-private (is-valid-rarity (rarity (string-ascii 20)))
+  (or
+    (is-eq rarity "common")
+    (is-eq rarity "uncommon")
+    (is-eq rarity "rare")
+    (is-eq rarity "epic")
+    (is-eq rarity "legendary")
+  )
+)
+
+;; Validates power levels (1-1000 range)
+(define-private (is-valid-power-level (power uint))
+  (and (>= power u1) (<= power u1000))
+)
+
+;; Validates attribute arrays (1-10 attributes max)
+(define-private (is-valid-attributes (attributes (list 10 (string-ascii 20))))
+  (and
+    (>= (len attributes) u1)
+    (<= (len attributes) u10)
+  )
+)
+
+;; Validates star system access permissions
+(define-private (is-valid-world-access (worlds (list 10 uint)))
+  (and
+    (>= (len worlds) u1)
+    (<= (len worlds) u10)
+    (fold check-world-exists worlds true)
+  )
+)
+
+;; Helper function to verify star system existence
+(define-private (check-world-exists
+    (world-id uint)
+    (valid bool)
+  )
+  (and valid (is-some (get-world-details world-id)))
+)
+
+;; NFT DEFINITIONS
+(define-non-fungible-token bitrealm-asset uint)
+(define-non-fungible-token player-avatar uint)
+
+;; DATA STRUCTURES
+
+;; Cosmic Artifact Metadata Storage
+(define-map bitrealm-asset-metadata
+  { token-id: uint }
+  {
+    name: (string-ascii 50),
+    description: (string-ascii 200),
+    rarity: (string-ascii 20),
+    power-level: uint,
+    world-id: uint,
+    attributes: (list 10 (string-ascii 20)),
+    experience: uint,
+    level: uint,
+  }
+)
+
+;; Command Center (Avatar) Metadata Storage
+(define-map avatar-metadata
+  { avatar-id: uint }
+  {
+    name: (string-ascii 50),
+    level: uint,
+    experience: uint,
+    achievements: (list 20 (string-ascii 50)),
+    equipped-assets: (list 5 uint),
+    world-access: (list 10 uint),
+  }
+)
+
+;; Star System Registry
+(define-map game-worlds
+  { world-id: uint }
+  {
+    name: (string-ascii 50),
+    description: (string-ascii 200),
+    entry-requirement: uint,
+    active-players: uint,
+    total-rewards: uint,
+  }
+)
+
+;; Galactic Leaderboard System
+(define-map leaderboard
+  { player: principal }
+  {
+    score: uint,
+    games-played: uint,
+    total-rewards: uint,
+    avatar-id: uint,
+    rank: uint,
+    achievements: (list 20 (string-ascii 50)),
+  }
+)
