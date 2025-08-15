@@ -306,3 +306,99 @@
     ERR-INVALID-AVATAR
   )
 )
+
+;; Retrieves paginated leaderboard data
+(define-read-only (get-paginated-leaderboard
+    (page uint)
+    (items-per-page uint)
+  )
+  (let (
+      (start (* page items-per-page))
+      (end (+ start items-per-page))
+    )
+    (filter is-valid-ranking
+      (map get-ranking-at-position (generate-sequence start end))
+    )
+  )
+)
+
+;; PROTOCOL ADMINISTRATION
+
+;; Initializes the NebulaForge protocol with configuration parameters
+(define-public (initialize-protocol
+    (entry-fee uint)
+    (max-entries uint)
+  )
+  (begin
+    (asserts! (is-protocol-admin tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (and (>= entry-fee u1) (<= entry-fee u1000)) ERR-INVALID-FEE)
+    (asserts! (and (>= max-entries u1) (<= max-entries u500)) ERR-INVALID-ENTRIES)
+
+    (var-set protocol-fee entry-fee)
+    (var-set max-leaderboard-entries max-entries)
+
+    (ok true)
+  )
+)
+
+;; COSMIC ARTIFACT MANAGEMENT
+
+;; Forges new cosmic artifacts with unique properties
+(define-public (mint-bitrealm-asset
+    (name (string-ascii 50))
+    (description (string-ascii 200))
+    (rarity (string-ascii 20))
+    (power-level uint)
+    (world-id uint)
+    (attributes (list 10 (string-ascii 20)))
+  )
+  (let ((token-id (+ (var-get total-assets) u1)))
+    (asserts! (is-protocol-admin tx-sender) ERR-NOT-AUTHORIZED)
+    (asserts! (is-valid-name name) ERR-INVALID-NAME)
+    (asserts! (is-valid-description description) ERR-INVALID-DESCRIPTION)
+    (asserts! (is-valid-rarity rarity) ERR-INVALID-RARITY)
+    (asserts! (is-valid-power-level power-level) ERR-INVALID-POWER-LEVEL)
+    (asserts! (is-some (get-world-details world-id)) ERR-WORLD-NOT-FOUND)
+    (asserts! (is-valid-attributes attributes) ERR-INVALID-ATTRIBUTES)
+
+    (try! (nft-mint? bitrealm-asset token-id tx-sender))
+
+    (map-set bitrealm-asset-metadata { token-id: token-id } {
+      name: name,
+      description: description,
+      rarity: rarity,
+      power-level: power-level,
+      world-id: world-id,
+      attributes: attributes,
+      experience: u0,
+      level: u1,
+    })
+
+    (var-set total-assets token-id)
+
+    (unwrap! (emit-asset-event EVENT-ASSET-MINTED token-id tx-sender none)
+      ERR-NOT-AUTHORIZED
+    )
+
+    (ok token-id)
+  )
+)
+
+;; Transfers cosmic artifacts between commanders
+(define-public (transfer-game-asset
+    (token-id uint)
+    (recipient principal)
+  )
+  (begin
+    (asserts!
+      (is-eq tx-sender
+        (unwrap! (nft-get-owner? bitrealm-asset token-id) ERR-INVALID-GAME-ASSET)
+      )
+      ERR-NOT-AUTHORIZED
+    )
+
+    (asserts! (is-valid-principal recipient) ERR-INVALID-INPUT)
+
+    (nft-transfer? bitrealm-asset token-id tx-sender recipient)
+  )
+)
