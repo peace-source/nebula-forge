@@ -715,3 +715,79 @@
     )
   )
 )
+
+;; Determines if command center qualifies for level advancement
+(define-private (can-level-up
+    (current-experience uint)
+    (gained-experience uint)
+    (current-level uint)
+  )
+  (let (
+      (new-total-experience (+ current-experience gained-experience))
+      (required-experience (calculate-level-up-experience current-level))
+    )
+    (>= new-total-experience required-experience)
+  )
+)
+
+;; Validates leaderboard ranking entries
+(define-private (is-valid-ranking (entry (optional {
+  player: principal,
+  score: uint,
+})))
+  (is-some entry)
+)
+
+;; Retrieves ranking data at specific position
+(define-private (get-ranking-at-position (position uint))
+  (map-get? player-rankings { rank: position })
+)
+
+;; Generates sequence for pagination (simplified)
+(define-private (generate-sequence
+    (start uint)
+    (end uint)
+  )
+  (list start)
+)
+
+;; Implements rate limiting for security
+(define-private (check-rate-limit (function (string-ascii 50)))
+  (let ((current-limits (default-to {
+      last-call: u0,
+      calls: u0,
+    }
+      (map-get? rate-limits {
+        function: function,
+        caller: tx-sender,
+      })
+    )))
+    (if (> (- stacks-block-height (get last-call current-limits)) RATE-LIMIT-WINDOW)
+      (begin
+        (map-set rate-limits {
+          function: function,
+          caller: tx-sender,
+        } {
+          last-call: stacks-block-height,
+          calls: u1,
+        })
+        true
+      )
+      (if (< (get calls current-limits) MAX-CALLS-PER-WINDOW)
+        (begin
+          (map-set rate-limits {
+            function: function,
+            caller: tx-sender,
+          }
+            (merge current-limits { calls: (+ (get calls current-limits) u1) })
+          )
+          true
+        )
+        false
+      )
+    )
+  )
+)
+
+;; Establishes contract deployer as the initial galactic administrator
+(map-set protocol-admin-whitelist tx-sender true)
